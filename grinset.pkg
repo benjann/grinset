@@ -1,0 +1,8 @@
+v 3
+d grinset: Stata module to add a graph as an inset to another graph
+d 
+d Author: Ben Jann, University of Bern, ben.jann@unibe.ch
+d
+d Distribution-Date: 20230427
+f grinset.ado
+f grinset.sthlp
