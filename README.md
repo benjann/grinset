@@ -4,13 +4,11 @@ Stata module to add a graph as an inset to another graph
 `grinset` has been inspired by a note on inset plots by 
 [Tibbles and Melse (2023)](https://doi.org/10.1177/1536867X231162022).
 
-To install `cdist` from GitHub, type
+To install `grinset` from GitHub, type
 
     . net install grinset, replace from(https://raw.githubusercontent.com/benjann/grinset/main/)
 
 Stata 14 (or newer) is required.
-
----
 
 ---
 
