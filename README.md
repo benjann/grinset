@@ -2,7 +2,7 @@
 Stata module to add a graph as an inset to another graph
 
 `grinset` has been inspired by a note on inset plots by 
-[Tibbles and Melse (2023)](https://doi.org/10.1177/1536867X23116202).
+[Tibbles and Melse (2023)](https://doi.org/10.1177/1536867X231162022).
 
 To install `cdist` from GitHub, type
 
