@@ -1,24 +1,28 @@
-*! version 1.0.0  27apr2023  Ben Jann
+*! version 1.0.1  29apr2023  Ben Jann
 
 program grinset
     version 14.2
     // syntax
-    local opts nodraw
     capt _on_colon_parse `0'
     if _rc==1 exit _rc
     if _rc==0 {
         local 0 `"`s(before)'"'
         local gr `"`s(after)'"'
-        local opts `opts' /*
-            */ Size(numlist max=2 >0) /*
-            */ SCale(numlist max=1 >0) /*
-            */ name(str)
         if `"`gr'"'=="" {
-            di as err "must specify plot command after colon"
+            di as err "must specify plot command or is inset ID after colon"
             exit 198
         }
+        capt numlist `"`gr'"'
+        if _rc==0 {
+            numlist `"`gr'"', max(1) int
+            local ID = abs(`r(numlist)')
+            local gr
+        }
     }
-    syntax [anything(equalok)] [, `opts' ]
+    syntax [anything(equalok)] [, /*
+            */ Size(numlist max=2 >0) /*
+            */ SCale(numlist max=1 >0) /*
+            */ name(str) nodraw ]
     // graph to modify
     gettoken NAME : anything, parse(" =")
     if `"`NAME'"'!="" {
@@ -45,24 +49,19 @@ program grinset
             exit 111
         }
     }
+    // name of output graph
+    _parse_name `name' // returns name replace
     // positioning
     mata: _parse_positions(st_local("anything")) // ypos, yref, xpos, xref
     if "`ypos'"!="" confirm number `ypos'
     if "`xpos'"!="" confirm number `xpos'
-
-    
-    // no insert to add; try to move existing inset
+    // no insert to add; modify existing inset
     if `"`gr'"'=="" {
-        if "`ypos'`xpos'"!="" {
-            _position_inset "`NAME'" "`yref'" "`ypos'" "`xref'" "`xpos'"
-        }
-        if "`draw'"=="" {
-            graph display `NAME'
-        }
+        capt n _modify_inset "`NAME'" "`name'" "`replace'" "`draw'" "`ID'" /*
+            */ "`size'" "`scale'" "`yref'" "`ypos'" "`xref'" "`xpos'"
+        if _rc exit _rc
         exit
     }
-    // name of output graph
-    _parse_name `name' // returns newname nameopt
     // size and scale options
     if "`size'"=="" local size 25
     local size `size' `size'
@@ -70,79 +69,49 @@ program grinset
     gettoken fxsize size : size
     if "`scale'"=="" local scale .5
     // properties of main (current/topmost) graph; determine fysize/fxsize
-    capt graph describe `NAME'
-    local scheme `"scheme(`r(scheme)')"'
-    local ysize = r(ysize)
-    local xsize = r(xsize)
+    local scheme scheme(`.`NAME'._scheme.scheme_name')
+    local ysize `.`NAME'.style.declared_ysize.val'
+    local xsize `.`NAME'.style.declared_xsize.val'
     if `ysize'>`xsize' local fysize = `fysize' * (`ysize'/`xsize')
     else               local fxsize = `fxsize' * (`xsize'/`ysize')
     // create inset graph
     _parse comma lhs gropts: gr
-    _parse_gropts `gropts' // updates scheme and gropts
+    _parse_gropts `gropts' // returns ischeme, updates gropts
+    if `"`ischeme'"'=="" local ischeme `scheme'
     tempname INSET
-    `lhs', `gropts' `scheme' graphregion(style(none) istyle(none) margin(zero)) nodraw /*
+    `lhs', `gropts' `ischeme' /*
+        */ graphregion(style(none) istyle(none) margin(zero)) nodraw /*
         */ name(`INSET') fysize(`fysize') fxsize(`fxsize') scale(`scale')
     // add inset to main graph
-    if `"`newname'"'=="" {
-        local newname `NAME'
-        if `"`newname'"'!="Graph" {
-            local nameopt name(`newname', replace)
+    if "`name'"=="" {
+        local name `NAME'
+        if "`name'"!="Graph" {
+            local nameopt name(`name', replace)
         }
     }
-    graph combine `NAME' `INSET', `nameopt' nodraw /*
+    else if "`name'"!="Graph" {
+        if "`replace'"!="" local nameopt(`name', replace)
+        else               local nameopt(`name')
+    }
+    graph combine `NAME' `INSET', `nameopt' `scheme' nodraw /*
         */ graphregion(margin(zero)) altshrink /*
         */ ysize(`ysize') xsize(`xsize')
-    _gm_edit .`newname'.plotregion1.Expand graph2 left 1
+    _gm_edit .`name'.plotregion1.Expand graph2 left 1
     // reposition insert
     if "`ypos'`xpos'"!="" {
-        _position_inset "`newname'" "`yref'" "`ypos'" "`xref'" "`xpos'"
+        _position_inset "`name'" "`yref'" "`ypos'" "`xref'" "`xpos'" /*
+            */ `ysize' `xsize'
     }
     // done
     if "`draw'"=="" {
-        graph display `newname', ysize(`ysize') xsize(`xsize')
-    }
-end
-
-program _position_inset
-    args NAME yref ypos xref xpos
-    qui graph describe `NAME'
-    local ysize = r(ysize)
-    local xsize = r(xsize)
-    local fy 1
-    local fx 1
-    if `ysize'>`xsize' local fy = `ysize'/`xsize'
-    else               local fx = `xsize'/`ysize'
-    if "`yref'"!="" {
-        local ypos = 50*`fy' - `ypos' - `.Graph.plotregion1.graph2.ysize'/2
-        if "`yref'"=="b" local ypos = -`ypos'
-    }
-    if "`xref'"!="" {
-        local xpos = 50*`fx' - `xpos' - `.Graph.plotregion1.graph2.xsize'/2
-        if "`xref'"=="l" local xpos = -`xpos'
-    }
-    capture {
-        _gm_edit .`NAME'.plotregion1.graph2.yoffset = `ypos'
-        _gm_edit .`NAME'.plotregion1.graph2.xoffset = `xpos'
-    }
-    if _rc {
-        di as err `"no inset found in graph `NAME'"'
-        exit 498
+        graph display `name', ysize(`ysize') xsize(`xsize')
     }
 end
 
 program _parse_name
-    syntax [anything] [, Replace ]
-    if `"`anything'"'!="" {
-        confirm name `anything'
-        if "`replace'"!="" local replace ", replace"
-        c_local newname `anything'
-        if "`anything'"=="Graph" c_local nameopt
-        else                     c_local nameopt name(`anything'`replace')
-    }
-    else {
-        c_local newname
-        c_local nameopt
-    }
+    syntax [name] [, Replace ]
+    c_local name `namelist'
+    c_local replace `replace'
 end
 
 program _parse_gropts
@@ -150,11 +119,74 @@ program _parse_gropts
         remove: */ GRAPHRegion(str) nodraw name(str) /*
                 */ fysize(str) fxsize(str) scale(str) /* 
         */ * ]
-    if `"`scheme'"'!="" {
-        c_local scheme `scheme'
-    }
-    c_local gropts `macval(options)'
+    c_local ischeme `scheme'
+    c_local gropts  `macval(options)'
 end
+
+program _modify_inset
+    args NAME name replace draw ID size scale yref ypos xref xpos
+    if "`name'"=="`NAME'" local name
+    if "`name'"!="" {
+        if "`name'"=="Graph" local replace replace
+        graph copy `NAME' `name', `replace'
+        local NAME `name'
+    }
+    else local name `NAME'
+    local id `name'
+    if "`ID'"=="" local ID 1
+    forv i=2/`ID' {
+        local id `id'.plotregion1.graph1
+    }
+    capture {
+        if "`scale'"!="" {
+            _gm_edit .`id'.plotregion1.graph2.gmetric_mult = `scale'
+        }
+        local ysize `.`name'.style.declared_ysize.val'
+        local xsize `.`name'.style.declared_xsize.val'
+        if "`size'"!="" {
+            local size `size' `size'
+            gettoken fysize size : size
+            gettoken fxsize size : size
+            if `ysize'>`xsize' local fysize = `fysize' * (`ysize'/`xsize')
+            else               local fxsize = `fxsize' * (`xsize'/`ysize')
+            _gm_edit .`id'.plotregion1.graph2.fixed_ysize = `fysize'
+            _gm_edit .`id'.plotregion1.graph2.fixed_xsize = `fxsize'
+        }
+        if "`ypos'`xpos'"!="" {
+            _position_inset "`id'" "`yref'" "`ypos'" "`xref'" "`xpos'" /*
+                */ `ysize' `xsize'
+        }
+    }
+    if _rc==1 exit _rc
+    if _rc {
+        di as err "could not modify inset; maybe inset does not exist"
+        exit 498
+    }
+    if "`draw'"=="" {
+        graph display `name'
+    }
+end
+
+program _position_inset
+    args id yref ypos xref xpos ysize xsize
+    local fy 1
+    local fx 1
+    if `ysize'>`xsize' local fy = `ysize'/`xsize'
+    else               local fx = `xsize'/`ysize'
+    if "`yref'"!="" {
+        local ypos = 50*`fy' - `ypos' - /*
+            */ `.`id'.plotregion1.graph2.fixed_ysize'/2
+        if "`yref'"=="b" local ypos = -`ypos'
+    }
+    if "`xref'"!="" {
+        local xpos = 50*`fx' - `xpos' - /*
+            */`.`id'.plotregion1.graph2.fixed_xsize'/2
+        if "`xref'"=="l" local xpos = -`xpos'
+    }
+    _gm_edit .`id'.plotregion1.graph2.yoffset = `ypos'
+    _gm_edit .`id'.plotregion1.graph2.xoffset = `xpos'
+end
+
 
 version 14.2
 mata:
